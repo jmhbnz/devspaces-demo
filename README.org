@@ -1,0 +1,124 @@
+#+TITLE: Dev spaces demo
+#+AUTHOR: James Blair
+#+DATE: <2023-03-21 Tue 11:45>
+
+This repository steps through a brief walkthrough of [[https://developers.redhat.com/products/openshift-dev-spaces/overview][Red Hat OpenShift Dev Spaces]]. A pre-requisite for this guide is an existing [[https://www.redhat.com/en/openshift-4][Red Hat OpenShift 4]] cluster.
+
+[[./images/devspace.png]]
+
+
+* Install dev spaces operator
+
+Our first step to be able to use dev spaces is to ensure the operator is installed in our cluster.
+
+#+NAME: Install dev spaces operator
+#+begin_src tmate
+cat << EOF | oc --kubeconfig ~/.config/aro apply -f -
+---
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: devspaces
+  namespace: openshift-operators
+spec:
+  channel: stable
+  installPlanApproval: Automatic
+  name: devspaces
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+EOF
+#+end_src
+
+
+We can review the status of the operator install in the [[https://console-openshift-console.apps.n7p4ridr.eastus.aroapp.io/k8s/ns/openshift-operators/operators.coreos.com~v1alpha1~ClusterServiceVersion?cluster-service-version=dev+spaces][openshift web interface]].
+
+
+* Create dev workspaces instance
+
+With the operator installed we can now create our clusterwide instance of the dev workspaces dashboard:
+
+#+NAME: Create dev workspaces instance
+#+begin_src tmate
+cat << EOF | oc --kubeconfig ~/.config/aro apply -f -
+---
+apiVersion: org.eclipse.che/v2
+kind: CheCluster
+metadata:
+  finalizers:
+    - checluster.che.eclipse.org
+    - cheGateway.clusterpermissions.finalizers.che.eclipse.org
+    - cheWorkspaces.clusterpermissions.finalizers.che.eclipse.org
+    - namespaces-editor.permissions.finalizers.che.eclipse.org
+    - devWorkspace.permissions.finalizers.che.eclipse.org
+    - oauthclients.finalizers.che.eclipse.org
+    - dashboard.clusterpermissions.finalizers.che.eclipse.org
+    - consolelink.finalizers.che.eclipse.org
+  name: devspaces
+  namespace: openshift-operators
+spec:
+  components:
+    cheServer:
+      debug: false
+      logLevel: INFO
+    database:
+      credentialsSecretName: postgres-credentials
+      externalDb: false
+      postgresDb: dbche
+      postgresHostName: postgres
+      postgresPort: '5432'
+      pvc:
+        claimSize: 1Gi
+    devWorkspace: {}
+    devfileRegistry: {}
+    imagePuller:
+      enable: false
+      spec: {}
+    metrics:
+      enable: true
+    pluginRegistry:
+      openVSXURL: 'https://open-vsx.org'
+  containerRegistry: {}
+  devEnvironments:
+    startTimeoutSeconds: 300
+    secondsOfRunBeforeIdling: -1
+    maxNumberOfWorkspacesPerUser: 3
+    containerBuildConfiguration:
+      openShiftSecurityContextConstraint: container-build
+    disableContainerBuildCapabilities: true
+    defaultEditor: che-incubator/che-code/latest
+    maxNumberOfRunningWorkspacesPerUser: 3
+    defaultComponents:
+      - container:
+          image: registry.redhat.io/devspaces/udi-rhel8:latest
+          sourceMapping: /projects
+        name: universal-developer-image
+    defaultNamespace:
+      autoProvision: true
+      template: <username>-devspaces
+    secondsOfInactivityBeforeIdling: 3600
+    storage:
+      pvcStrategy: per-user
+  gitServices: {}
+  networking:
+    auth:
+      gateway:
+        configLabels:
+          app: che
+          component: che-gateway-config
+EOF
+#+end_src
+
+
+Once the cluster has created we can open the [[https://console-openshift-console.apps.n7p4ridr.eastus.aroapp.io/k8s/ns/openshift-operators/routes][route to view the dev spaces dashboard]].
+
+
+* Create workspace
+
+Once the operator has installed we can create our first workspace, this can easily be done through the dev spaces dsahboard, or by appending the link to our repository to the link of our dev spaces dashboard, i.e. ~{DEV_SPACES_URL}/#{GIT_PROJECT_URL}?che-editor={DEV_SPACES_EDITOR}~
+
+So to start a new workspace with vscode as our editor we can open: https://devspaces.apps.n7p4ridr.eastus.aroapp.io#https://github.com/jmhbnz/quarkus-api-example?che-editor=che-incubator/che-code/insiders
+
+
+** Switch editor via url parameter
+
+Perfer a different editor? No problem, switching editors is as simple as changing a url parameter! For example if you prefer IntelliJ we can use url https://devspaces.apps.n7p4ridr.eastus.aroapp.io#https://github.com/jmhbnz/quarkus-api-example?che-editor=che-incubator/che-idea/latest
